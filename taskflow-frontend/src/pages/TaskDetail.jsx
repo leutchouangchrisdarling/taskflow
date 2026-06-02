@@ -1,5 +1,6 @@
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import useLocalStorage from '../hooks/useLocalStorage';
+import { getTasks, updateTaskStatus } from '../services/api';
 
 const statusMapping = {
   'A faire': { label: 'Critical Alert', className: 'badge-todo' },
@@ -53,16 +54,88 @@ function getMockLogs(tache) {
 
 function TaskDetail() {
   const { id } = useParams();
-  const [taches, setTaches] = useLocalStorage('taskflow_data', []);
-  
-  const tacheIndex = taches.findIndex(t => t.id === Number(id));
+  const [taches, setTaches] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [updating, setUpdating] = useState(false);
+
+  // Charger les tâches depuis l'API au montage
+  useEffect(() => {
+    async function loadTasks() {
+      try {
+        setIsLoading(true);
+        const data = await getTasks();
+        setTaches(data);
+        setError(null);
+      } catch (err) {
+        setError(err.message);
+        console.error('Erreur lors du chargement des tâches:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadTasks();
+  }, []);
+
+  const tacheIndex = taches.findIndex(t => t.id === id);
   const tache = taches[tacheIndex];
+
+  if (isLoading) {
+    return (
+      <div style={{ textAlign: 'center', padding: '80px 24px' }}>
+        <div style={{ 
+          backgroundColor: 'var(--bg-card)', 
+          borderRadius: '12px',
+          padding: '48px', 
+          display: 'inline-block'
+        }}>
+          <div style={{ 
+            width: '40px', 
+            height: '40px', 
+            border: '4px solid var(--border-color)',
+            borderTopColor: 'var(--primary)',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 16px'
+          }} />
+          <p>Chargement de l'incident...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ textAlign: 'center', padding: '80px 24px' }}>
+        <div style={{ 
+          backgroundColor: 'var(--bg-card)', 
+          border: '1px solid var(--danger)',
+          borderRadius: '12px',
+          padding: '48px', 
+          maxWidth: '500px',
+          margin: '0 auto'
+        }}>
+          <h3 style={{ color: 'var(--danger)', marginBottom: '16px' }}>⚠️ Erreur de connexion</h3>
+          <p style={{ color: 'var(--text-main)', marginBottom: '16px' }}>{error}</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+            Vérifiez que le serveur backend est démarré sur <code>http://localhost:5000</code>
+          </p>
+          <Link to="/" className="btn btn-primary" style={{ marginTop: '16px', display: 'inline-block' }}>
+            Retour au tableau de bord
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (!tache) {
     return (
       <div style={{ textAlign: 'center', padding: '80px 24px' }}>
         <h2 style={{ color: 'var(--danger)', marginBottom: '16px' }}>Incident Introuvable ou Supprimé</h2>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>L'identifiant #{id} ne correspond à aucun log répertorié.</p>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>
+          L'identifiant #{id} ne correspond à aucun log répertorié.
+        </p>
         <Link to="/" className="btn btn-primary">
           Retour au tableau de bord
         </Link>
@@ -73,15 +146,22 @@ function TaskDetail() {
   const statusInfo = statusMapping[tache.statut] || { label: tache.statut, className: 'badge-todo' };
 
   // Status updates respecting immutability
-  const updateStatus = (newStatut) => {
-    const updated = taches.map((t, idx) => {
-      if (idx === tacheIndex) {
-        // Return new object copy
-        return { ...t, statut: newStatut };
-      }
-      return t;
-    });
-    setTaches(updated);
+  const updateStatus = async (newStatut) => {
+    if (updating) return;
+    
+    try {
+      setUpdating(true);
+      // Mettre à jour le statut via l'API
+      await updateTaskStatus(tache.id, newStatut);
+      // Recharger les tâches pour avoir les données à jour
+      const updatedTasks = await getTasks();
+      setTaches(updatedTasks);
+    } catch (err) {
+      console.error('Erreur lors de la mise à jour du statut:', err);
+      setError(err.message);
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const logs = getMockLogs(tache);
@@ -129,33 +209,36 @@ function TaskDetail() {
           <div className="status-btns">
             <button 
               onClick={() => updateStatus('A faire')}
+              disabled={updating}
               className={`btn ${tache.statut === 'A faire' ? 'btn-primary' : 'btn-secondary'}`}
               style={{ 
                 backgroundColor: tache.statut === 'A faire' ? 'var(--danger)' : '', 
                 borderColor: tache.statut === 'A faire' ? 'var(--danger)' : '' 
               }}
             >
-              À Traiter / Alerte
+              {updating ? 'Chargement...' : 'À Traiter / Alerte'}
             </button>
             <button 
               onClick={() => updateStatus('En cours')}
+              disabled={updating}
               className={`btn ${tache.statut === 'En cours' ? 'btn-primary' : 'btn-secondary'}`}
               style={{ 
                 backgroundColor: tache.statut === 'En cours' ? 'var(--warning)' : '', 
                 borderColor: tache.statut === 'En cours' ? 'var(--warning)' : '' 
               }}
             >
-              Sous Enquête
+              {updating ? 'Chargement...' : 'Sous Enquête'}
             </button>
             <button 
               onClick={() => updateStatus('Termine')}
+              disabled={updating}
               className={`btn ${tache.statut === 'Termine' ? 'btn-primary' : 'btn-secondary'}`}
               style={{ 
                 backgroundColor: tache.statut === 'Termine' ? 'var(--success)' : '', 
                 borderColor: tache.statut === 'Termine' ? 'var(--success)' : '' 
               }}
             >
-              Résolu
+              {updating ? 'Chargement...' : 'Résolu'}
             </button>
           </div>
         </div>

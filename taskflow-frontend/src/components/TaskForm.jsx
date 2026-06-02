@@ -5,20 +5,30 @@ function TaskForm({ onAddTask }) {
   const [description, setDescription] = useState('');
   const [statut, setStatut] = useState('A faire');
   const [ouvert, setOuvert] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!titre.trim()) return;
-    onAddTask({
-      id: Date.now(),
-      titre,
-      description,
-      statut
-    });
-    setTitre('');
-    setDescription('');
-    setStatut('A faire');
-    setOuvert(false);
+    
+    setIsSubmitting(true);
+    try {
+      // Ne pas inclure l'ID, il sera généré par le backend
+      await onAddTask({
+        titre,
+        description,
+        statut
+      });
+      setTitre('');
+      setDescription('');
+      setStatut('A faire');
+      setOuvert(false);
+    } catch (err) {
+      console.error('Erreur lors de l\'ajout:', err);
+      // L'erreur est gérée dans le composant parent (Dashboard)
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -42,6 +52,7 @@ function TaskForm({ onAddTask }) {
               value={titre}
               onChange={e => setTitre(e.target.value)}
               required
+              disabled={isSubmitting}
             />
           </div>
 
@@ -52,6 +63,7 @@ function TaskForm({ onAddTask }) {
               placeholder="Ex: May 25 23:45:12 srv-prod-02 sshd[12042]: Failed password for invalid user admin from 198.51.100.42 port 49152 ssh2"
               value={description}
               onChange={e => setDescription(e.target.value)}
+              disabled={isSubmitting}
             />
           </div>
 
@@ -61,6 +73,7 @@ function TaskForm({ onAddTask }) {
               className="form-input"
               value={statut}
               onChange={e => setStatut(e.target.value)}
+              disabled={isSubmitting}
             >
               <option value="A faire">A faire (Alerte Critique)</option>
               <option value="En cours">En cours (Investigation active)</option>
@@ -69,13 +82,14 @@ function TaskForm({ onAddTask }) {
           </div>
 
           <div className="form-actions">
-            <button type="submit" className="btn btn-primary">
-              Enregistrer l'Alerte
+            <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+              {isSubmitting ? 'Enregistrement...' : 'Enregistrer l\'Alerte'}
             </button>
             <button 
               type="button" 
               onClick={() => setOuvert(false)} 
               className="btn btn-secondary"
+              disabled={isSubmitting}
             >
               Annuler
             </button>
